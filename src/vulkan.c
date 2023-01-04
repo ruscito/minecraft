@@ -56,8 +56,9 @@ bool create_vulkan_instance() {
     createInfo.enabledLayerCount = 0;
 
     VkResult result = vkCreateInstance(&createInfo, NULL, &instance);
+#if defined(__APPLE__)
     free(extensions);
-
+#endif
     if (result != VK_SUCCESS) {
         FATAL("Failed to create instance: %d", result);
         return false;

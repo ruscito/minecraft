@@ -31,7 +31,7 @@ add_subdirectory(lib/cglm)
 
 
 # Vulkan 
-find_package(Vulkan REQUIRED FATAL_ERROR)
+find_package(Vulkan REQUIRED)
 
 
 # Put all together
