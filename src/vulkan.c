@@ -14,6 +14,23 @@ static VkInstance instance;
 #endif
 
 
+static bool check_validation_layer_support(const char *validation_layer) {
+    bool ret_value = false;
+    uint32_t count = 0;
+
+    vkEnumerateInstanceLayerProperties(&count, NULL);
+    VkLayerProperties *available_layers = ( VkLayerProperties *) malloc(count * sizeof(available_layers));
+    vkEnumerateInstanceLayerProperties(&count, available_layers);
+    INFO("Layers available:");
+    for (int i=0; i<count-1; i++) {
+        INFO("  %s", available_layers[i].layerName);
+        if (strcmp(validation_layer, available_layers[i].layerName)==0) {
+            ret_value = true;
+        }
+    }
+    return ret_value;
+}
+
 bool create_vulkan_instance() {
     VkApplicationInfo appInfo={};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -79,15 +96,19 @@ bool create_vulkan_instance() {
 #else
     createInfo.ppEnabledExtensionNames = extensions;
 #endif
+    const char **layer = malloc(sizeof(*layer));
+    layer[0] ="VK_LAYER_KHRONOS_validation";
+   // check_validation_layer_support(layer[0] );
     createInfo.enabledExtensionCount = count;
-    createInfo.enabledLayerCount = 0;
+    createInfo.enabledLayerCount = (int) 1;
+    createInfo.ppEnabledLayerNames =  layer;
 
     VkResult result = vkCreateInstance(&createInfo, NULL, &instance);
 #if defined(__APPLE__)
     free(apple_extra_extensions);
 #endif
     free(extensions);
-
+    free(layer);
     if (result != VK_SUCCESS) {
         FATAL("Failed to create instance: %d", result);
         return false;
