@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#ifdef RELEASE
+#ifdef NDEBUG
   static log_level_t log_level = ERROR;
 #else
   static log_level_t log_level = TRACE;
@@ -58,7 +58,6 @@ void set_log_level(log_level_t level) {
 
 void log_output(log_level_t level, const char *fmt, ...){
   // calculate time stamp
-  set_log_level(TRACE);
   if (level < log_level) {
     return;
   }

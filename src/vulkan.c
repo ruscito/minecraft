@@ -7,28 +7,29 @@
 
 static VkInstance instance;
 
-#ifdef RELEASE
+#ifdef NDEBUG
     static const bool enable_validation_layers = false;
 #else
     static const bool enable_validation_layers = true;
 #endif
 
 
-static bool check_validation_layer_support(const char *validation_layer) {
-    bool ret_value = false;
+static bool is_validation_layer_available(const char *validation_layer) {
     uint32_t count = 0;
 
     vkEnumerateInstanceLayerProperties(&count, NULL);
-    VkLayerProperties *available_layers = ( VkLayerProperties *) malloc(count * sizeof(available_layers));
-    vkEnumerateInstanceLayerProperties(&count, available_layers);
-    INFO("Layers available:");
-    for (int i=0; i<count-1; i++) {
-        INFO("  %s", available_layers[i].layerName);
+    VkLayerProperties *available_layers = ( VkLayerProperties *) malloc(count * sizeof(*available_layers));
+    VkResult result = vkEnumerateInstanceLayerProperties(&count, available_layers);
+
+    for (int i=0; i<count; i++) {
         if (strcmp(validation_layer, available_layers[i].layerName)==0) {
-            ret_value = true;
+            free(available_layers);
+            return true;
         }
     }
-    return ret_value;
+
+    free(available_layers);
+    return false;
 }
 
 bool create_vulkan_instance() {
@@ -96,13 +97,24 @@ bool create_vulkan_instance() {
 #else
     createInfo.ppEnabledExtensionNames = extensions;
 #endif
+    
+    // create the validation layer 
     const char **layer = malloc(sizeof(*layer));
     layer[0] ="VK_LAYER_KHRONOS_validation";
-   // check_validation_layer_support(layer[0] );
-    createInfo.enabledExtensionCount = count;
-    createInfo.enabledLayerCount = (int) 1;
-    createInfo.ppEnabledLayerNames =  layer;
+    
+    if (enable_validation_layers && is_validation_layer_available("VK_LAYER_KHRONOS_validation")){
+        INFO("Validation layer [%s] available", "VK_LAYER_KHRONOS_validation");
+        createInfo.enabledLayerCount = (uint32_t) 1;
+        createInfo.ppEnabledLayerNames = layer;
+    } else {
+        createInfo.enabledLayerCount = 0;
+        createInfo.ppEnabledLayerNames = NULL;
+    }
+    //check_validation_layer_support(layer[0] );
 
+
+    createInfo.enabledExtensionCount = count;
+    
     VkResult result = vkCreateInstance(&createInfo, NULL, &instance);
 #if defined(__APPLE__)
     free(apple_extra_extensions);
