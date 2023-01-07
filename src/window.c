@@ -75,9 +75,7 @@ bool window_create(int width, int height, const char *title) {
     glfwSetScrollCallback(window.handle, scroll_callback);
     glfwSetCursorEnterCallback(window.handle, cursor_enter_callback);
     
-    if (init_vulkan()) {
-        INFO("Vulkan instance created");
-    } else {
+    if (!init_vulkan()) {
         return false;
     }
 

@@ -6,6 +6,5 @@
 
 bool init_vulkan();
 
-
 void destroy_vulkan();
 

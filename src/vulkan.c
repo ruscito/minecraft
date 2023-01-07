@@ -6,6 +6,8 @@
 #include <stdlib.h>
 
 static VkInstance instance;
+static VkDebugUtilsMessengerEXT debug_messenger;
+static VkDebugUtilsMessengerCreateInfoEXT messanger_create_info = {};
 
 #ifdef NDEBUG
     static const bool enable_validation_layers = false;
@@ -13,6 +15,73 @@ static VkInstance instance;
     static const bool enable_validation_layers = true;
 #endif
 
+// function declaration
+static void setup_messanger_create_info();
+static void setup_debug_messenger();
+static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback();
+static bool is_validation_layer_available(const char *validation_layer);
+static void setup_debug_messenger();
+static void destroy_debug_messanger();
+static void setup_messanger_create_info() ;
+static bool create_vulkan_instance();
+
+
+bool init_vulkan(){
+    if (create_vulkan_instance()) {
+        setup_debug_messenger();
+        return true;
+    }
+    return false;
+}
+
+void destroy_vulkan() {
+    destroy_debug_messanger();
+    vkDestroyInstance(instance, NULL);
+    INFO("Vulkan destroyed")
+}
+
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
+    VkDebugUtilsMessageTypeFlagsEXT message_type,
+    const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
+    void* user_data) {
+    
+    char *type_info = "[UNKNOWN]";
+    switch (message_type)
+    {
+    case VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT:
+        type_info = "[GENERAL]";
+        break;
+    case VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT:
+        type_info = "[SPECIFICATION]";
+        break;
+    case VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT:
+        type_info = "[PERFORAMNCE]";
+        break;
+    }
+
+    switch (message_severity)
+    {
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+        TRACE("Vulkan %s %s", type_info, callback_data->pMessage);
+        break;
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+        INFO("Vulkan %s %s", type_info, callback_data->pMessage);
+        break;
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+        WARNING("Vulkan %s %s", type_info, callback_data->pMessage);
+        break;
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+        FATAL("Vulkan %s %s", type_info, callback_data->pMessage);
+        break;
+    }
+
+
+    // according to the totorial  (message callback section) always return false
+    // https://vulkan-tutorial.com/Drawing_a_triangle/Setup/Validation_layers   
+    return VK_FALSE;
+}
 
 static bool is_validation_layer_available(const char *validation_layer) {
     uint32_t count = 0;
@@ -32,15 +101,55 @@ static bool is_validation_layer_available(const char *validation_layer) {
     return false;
 }
 
-bool create_vulkan_instance() {
-    VkApplicationInfo appInfo={};
-    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    appInfo.pApplicationName = "Hello Triangle";
-    appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    appInfo.pEngineName = "No Engine";
-    appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    appInfo.apiVersion = VK_API_VERSION_1_0;
+static void setup_debug_messenger() {
+    if (!enable_validation_layers) {
+        return;
+    }
 
+    PFN_vkCreateDebugUtilsMessengerEXT func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+     if (func != NULL) {
+        func(instance, &messanger_create_info, NULL, &debug_messenger);
+    } else {
+        ERROR("[setup_debug_manager] Extension %s not present");
+        return;
+    }   
+    INFO("Debug messanger created")
+}
+
+static void destroy_debug_messanger() {
+    if (!enable_validation_layers) {
+        return;
+    }
+    PFN_vkDestroyDebugUtilsMessengerEXT func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+     if (func != NULL) {
+        func(instance, debug_messenger, NULL);
+    } 
+    INFO("Debug messanger destroyed")
+}
+
+static void setup_messanger_create_info() {
+    //VkDebugUtilsMessengerCreateInfoEXT createInfo = {};
+    messanger_create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    //messanger_create_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | 
+    messanger_create_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | 
+                                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | 
+                                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    messanger_create_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | 
+                             VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                             VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    messanger_create_info.pfnUserCallback = debug_callback;
+    messanger_create_info.pUserData = NULL; // Optional
+}
+
+static bool create_vulkan_instance() {
+    VkApplicationInfo app_info={};
+    app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    app_info.pApplicationName = "Minecraft";
+    app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+    app_info.pEngineName = "No Engine";
+    app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+    app_info.apiVersion = VK_API_VERSION_1_0;
+    
     uint32_t count=0;
     uint32_t aux_count = 0;
 
@@ -88,14 +197,14 @@ bool create_vulkan_instance() {
     }
 #endif
 
-    VkInstanceCreateInfo createInfo={};
-    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    createInfo.pApplicationInfo = &appInfo;
+    VkInstanceCreateInfo create_info={};
+    create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    create_info.pApplicationInfo = &app_info;
 #if defined(__APPLE__)
     createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
     createInfo.ppEnabledExtensionNames = apple_extra_extensions;
 #else
-    createInfo.ppEnabledExtensionNames = extensions;
+    create_info.ppEnabledExtensionNames = extensions;
 #endif
     
     // create the validation layer 
@@ -104,18 +213,18 @@ bool create_vulkan_instance() {
     
     if (enable_validation_layers && is_validation_layer_available("VK_LAYER_KHRONOS_validation")){
         INFO("Validation layer [%s] available", "VK_LAYER_KHRONOS_validation");
-        createInfo.enabledLayerCount = (uint32_t) 1;
-        createInfo.ppEnabledLayerNames = layer;
+        setup_messanger_create_info();
+        create_info.enabledLayerCount = (uint32_t) 1;
+        create_info.ppEnabledLayerNames = layer;
+        create_info.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)  &messanger_create_info;
     } else {
-        createInfo.enabledLayerCount = 0;
-        createInfo.ppEnabledLayerNames = NULL;
+        create_info.enabledLayerCount = 0;
+        create_info.ppEnabledLayerNames = NULL;
     }
-    //check_validation_layer_support(layer[0] );
 
-
-    createInfo.enabledExtensionCount = count;
+    create_info.enabledExtensionCount = count;
     
-    VkResult result = vkCreateInstance(&createInfo, NULL, &instance);
+    VkResult result = vkCreateInstance(&create_info, NULL, &instance);
 #if defined(__APPLE__)
     free(apple_extra_extensions);
 #endif
@@ -125,14 +234,6 @@ bool create_vulkan_instance() {
         FATAL("Failed to create instance: %d", result);
         return false;
     }
+    INFO("Vulkan instance created");
     return true;
-}
-
-bool init_vulkan(){
-    return create_vulkan_instance();
-}
-
-void destroy_vulkan() {
-    vkDestroyInstance(instance, NULL);
-    INFO("Vulkan destroyed")
 }

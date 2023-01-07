@@ -19,9 +19,13 @@ void init(){
 
 
 int main() {
-    if (window_create(width, height, title)) {
-        window_loop();
+    if (!window_create(width, height, title)) {
+        FATAL("Failed to create main window");
+        window_destroy();
+        return FAIL;
     }
+    
+    window_loop();
     window_destroy();
 
     return OK;

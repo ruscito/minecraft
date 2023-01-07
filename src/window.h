@@ -1,3 +1,5 @@
+// window is also responsable for initalize vulkan
+
 #pragma once
 
 #define GLFW_INCLUDE_VULKAN
