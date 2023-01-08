@@ -12,7 +12,7 @@ set(PRJ_INCLUDES
     #lib/glfw/include)
 
 set(PRJ_SOURCES
-    src/vulkan.c
+    src/vulkan_if.c
     src/log.c
     src/window.c
     src/main.c)

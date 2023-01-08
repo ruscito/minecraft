@@ -1,7 +1,7 @@
 #include "window.h"
 #include "defines.h"
 #include "log.h"
-#include "vulkan.h"
+#include "vulkan_if.h"
 
 
 // the global window
