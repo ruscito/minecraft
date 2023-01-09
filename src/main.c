@@ -24,7 +24,7 @@ int main() {
         window_destroy();
         return FAIL;
     }
-    
+
     window_loop();
     window_destroy();
 

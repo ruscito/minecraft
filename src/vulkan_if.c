@@ -7,6 +7,8 @@
 #include <limits.h>
 
 static VkInstance instance;
+static VkDevice logical_device = VK_NULL_HANDLE; // the logical device
+static VkPhysicalDevice physical_device = VK_NULL_HANDLE; 
 static VkDebugUtilsMessengerEXT debug_messenger;
 
 
@@ -31,8 +33,9 @@ static void setup_debug_messenger(VkDebugUtilsMessengerCreateInfoEXT *messanger_
 static void destroy_debug_messanger();
 static void setup_messanger_create_info(VkDebugUtilsMessengerCreateInfoEXT *messanger_info) ;
 static bool create_vulkan_instance();
-static bool pick_physical_device(VkPhysicalDevice *device);
-static queue_family_indices_t find_queue_families(VkPhysicalDevice device);
+static bool pick_physical_device();
+static queue_family_indices_t find_queue_families();
+static bool create_logical_device();
 
 
 
@@ -46,6 +49,7 @@ bool init_vulkan(){
 }
 
 void destroy_vulkan() {
+    vkDestroyDevice(logical_device, NULL);
     destroy_debug_messanger();
     vkDestroyInstance(instance, NULL);
     INFO("Vulkan destroyed")
@@ -144,8 +148,8 @@ static void setup_messanger_create_info(VkDebugUtilsMessengerCreateInfoEXT *mess
     //VkDebugUtilsMessengerCreateInfoEXT createInfo = {};
     messanger_info->sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
     //messanger_info->messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | 
-    messanger_info->messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | 
-                                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | 
+    //messanger_info->messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | 
+    messanger_info->messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | 
                                  VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
     messanger_info->messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | 
                              VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
@@ -239,17 +243,22 @@ static bool create_vulkan_instance() {
     setup_debug_messenger( &messanger_create_info);
 
     // now pick a GPU. This object will be implicitly destroyed whith VkInstance
-    static VkPhysicalDevice physical_device = VK_NULL_HANDLE; 
-    if (!pick_physical_device(&physical_device)) {
+    
+    if (!pick_physical_device()) {
         FATAL("Failed to pick a GPU");
         return false;
+    }
+
+    if (!create_logical_device()) {
+         FATAL("Failed to create a logical device");
+         return false;
     }
 
     INFO("Vulkan instance created");
     return true;
 }
 
-static bool pick_physical_device(VkPhysicalDevice *device){
+static bool pick_physical_device(){
     // pick a graphic card
     uint32_t device_count;
     
@@ -272,9 +281,9 @@ static bool pick_physical_device(VkPhysicalDevice *device){
         vkGetPhysicalDeviceProperties(device_list[0], &properties);
         if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
             found_discrete_GPU = true;
-            INFO("Found and discrete GPU");
+            INFO("Found discrete GPU");
             INFO(" Driver name: %s", properties.deviceName);
-            device = &device_list[i];
+            physical_device = device_list[i];
             break;
         } 
     }
@@ -287,36 +296,37 @@ static bool pick_physical_device(VkPhysicalDevice *device){
             if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
                 INFO("Found integrate GPU");
                 INFO(" Driver name: %s", properties.deviceName);
-                device = &device_list[i];
+                physical_device = device_list[i];
                 break;
             }
         } 
     }       
 
-    // fail if not dicrete or integrated GPU is found
-    if (device == VK_NULL_HANDLE) {
+    // fail if not discrete or integrated GPU is found
+    if (physical_device == VK_NULL_HANDLE) {
         FATAL("Failed to find a suitable GPU");
         return false;
     }  
 
-    queue_family_indices_t indices =find_queue_families(*device);
+    queue_family_indices_t indices =find_queue_families();
 
     if (indices.graphics_family == UINT32_MAX) {
         FATAL("Phisical device do not support graphichs queue");
         return false;
     }
+
     return true;
 }
 
-static queue_family_indices_t find_queue_families(VkPhysicalDevice device){
+static queue_family_indices_t find_queue_families(){
     // find grapichs queue family
     queue_family_indices_t indices = {};
     indices.graphics_family = UINT32_MAX;
 
     uint32_t queue_family_count;
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, NULL);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, NULL);
     VkQueueFamilyProperties queue_family[queue_family_count];
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_family);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_family);
     
     for (int i=0; i<queue_family_count; i++){
         if(queue_family[i].queueFlags & VK_QUEUE_GRAPHICS_BIT){
@@ -325,4 +335,42 @@ static queue_family_indices_t find_queue_families(VkPhysicalDevice device){
     }
 
     return indices;
+}
+
+static bool create_logical_device(){
+    queue_family_indices_t indices =find_queue_families(physical_device);
+
+    VkDeviceQueueCreateInfo queueCreateInfo = {};
+    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queueCreateInfo.queueFamilyIndex = indices.graphics_family;
+    queueCreateInfo.queueCount = 1;
+    float queuePriority = 1.0f;
+    queueCreateInfo.pQueuePriorities = &queuePriority;
+
+    VkPhysicalDeviceFeatures deviceFeatures = {};
+
+    VkDeviceCreateInfo createInfo = {};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    createInfo.pQueueCreateInfos = &queueCreateInfo;
+    createInfo.queueCreateInfoCount = 1;
+
+    createInfo.pEnabledFeatures = &deviceFeatures;
+
+    createInfo.enabledExtensionCount = 0;
+
+    if (enable_validation_layers) {
+        // create the validation layer 
+        const char *layer[] = {"VK_LAYER_KHRONOS_validation"};
+        createInfo.enabledLayerCount = (uint32_t) 1;
+        createInfo.ppEnabledLayerNames = layer;
+    } else {
+        createInfo.ppEnabledLayerNames = NULL;
+        createInfo.enabledLayerCount = 0;
+    }
+
+    if (vkCreateDevice(physical_device, &createInfo, NULL, &logical_device) != VK_SUCCESS) {
+        return false;
+    }
+
+    return true;
 }
