@@ -10,6 +10,8 @@ static VkInstance instance;
 static VkDevice logical_device = VK_NULL_HANDLE; // the logical device
 static VkPhysicalDevice physical_device = VK_NULL_HANDLE; 
 static VkDebugUtilsMessengerEXT debug_messenger;
+static VkDebugUtilsMessengerCreateInfoEXT messanger_create_info = {};
+static VkQueue graphics_queue; // handler to the graphics queue
 
 
 
@@ -29,9 +31,8 @@ static void setup_messanger_create_info();
 static void setup_debug_messenger();
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback();
 static bool is_validation_layer_available(const char *validation_layer);
-static void setup_debug_messenger(VkDebugUtilsMessengerCreateInfoEXT *messanger_info);
 static void destroy_debug_messanger();
-static void setup_messanger_create_info(VkDebugUtilsMessengerCreateInfoEXT *messanger_info) ;
+static void setup_messanger_create_info() ;
 static bool create_vulkan_instance();
 static bool pick_physical_device();
 static queue_family_indices_t find_queue_families();
@@ -39,10 +40,22 @@ static bool create_logical_device();
 
 
 
-
-
 bool init_vulkan(){
     if (create_vulkan_instance()) {
+        // setup the debug messenger
+        setup_debug_messenger( &messanger_create_info);
+
+        // pick a GPU. This object will be implicitly destroyed whith VkInstance
+        if (!pick_physical_device()) {
+            FATAL("Failed to pick a GPU");
+            return false;
+        }
+
+        // create the logical device
+        if (!create_logical_device()) {
+            FATAL("Failed to create a logical device");
+            return false;
+        }
         return true;
     }
     return false;
@@ -144,22 +157,21 @@ static void destroy_debug_messanger() {
     INFO("Debug messanger destroyed")
 }
 
-static void setup_messanger_create_info(VkDebugUtilsMessengerCreateInfoEXT *messanger_info) {
-    //VkDebugUtilsMessengerCreateInfoEXT createInfo = {};
-    messanger_info->sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    //messanger_info->messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | 
-    //messanger_info->messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | 
-    messanger_info->messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | 
+static void setup_messanger_create_info() {
+    messanger_create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    //messanger_create_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | 
+    //messanger_create_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | 
+    messanger_create_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | 
                                  VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-    messanger_info->messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | 
+    messanger_create_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | 
                              VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
                              VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    messanger_info->pfnUserCallback = debug_callback;
-    messanger_info->pUserData = NULL; // Optional
+    messanger_create_info.pfnUserCallback = debug_callback;
+    messanger_create_info.pUserData = NULL; // Optional
 }
 
 static bool create_vulkan_instance() {
-    VkDebugUtilsMessengerCreateInfoEXT messanger_create_info = {};
+    
     VkApplicationInfo app_info = {};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     app_info.pApplicationName = "Minecraft";
@@ -221,7 +233,7 @@ static bool create_vulkan_instance() {
     
     if (enable_validation_layers && is_validation_layer_available("VK_LAYER_KHRONOS_validation")){
         INFO("Validation layer [%s] available", "VK_LAYER_KHRONOS_validation");
-        setup_messanger_create_info(&messanger_create_info);
+        setup_messanger_create_info();
         create_info.enabledLayerCount = (uint32_t) 1;
         create_info.ppEnabledLayerNames = layer;
         create_info.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)  &messanger_create_info;
@@ -237,21 +249,6 @@ static bool create_vulkan_instance() {
     if (result != VK_SUCCESS) {
         FATAL("Failed to create instance: %d", result);
         return false;
-    }
-    
-    // now setup the debug messenger
-    setup_debug_messenger( &messanger_create_info);
-
-    // now pick a GPU. This object will be implicitly destroyed whith VkInstance
-    
-    if (!pick_physical_device()) {
-        FATAL("Failed to pick a GPU");
-        return false;
-    }
-
-    if (!create_logical_device()) {
-         FATAL("Failed to create a logical device");
-         return false;
     }
 
     INFO("Vulkan instance created");
@@ -282,7 +279,7 @@ static bool pick_physical_device(){
         if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
             found_discrete_GPU = true;
             INFO("Found discrete GPU");
-            INFO(" Driver name: %s", properties.deviceName);
+            INFO("  Driver name: %s", properties.deviceName);
             physical_device = device_list[i];
             break;
         } 
@@ -295,7 +292,7 @@ static bool pick_physical_device(){
             vkGetPhysicalDeviceProperties(device_list[0], &properties);
             if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
                 INFO("Found integrate GPU");
-                INFO(" Driver name: %s", properties.deviceName);
+                INFO("  Driver name: %s", properties.deviceName);
                 physical_device = device_list[i];
                 break;
             }
@@ -340,37 +337,38 @@ static queue_family_indices_t find_queue_families(){
 static bool create_logical_device(){
     queue_family_indices_t indices =find_queue_families(physical_device);
 
-    VkDeviceQueueCreateInfo queueCreateInfo = {};
-    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueCreateInfo.queueFamilyIndex = indices.graphics_family;
-    queueCreateInfo.queueCount = 1;
+    VkDeviceQueueCreateInfo queue_create_info = {};
+    queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queue_create_info.queueFamilyIndex = indices.graphics_family;
+    queue_create_info.queueCount = 1;
     float queuePriority = 1.0f;
-    queueCreateInfo.pQueuePriorities = &queuePriority;
+    queue_create_info.pQueuePriorities = &queuePriority;
 
     VkPhysicalDeviceFeatures deviceFeatures = {};
 
-    VkDeviceCreateInfo createInfo = {};
-    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    createInfo.pQueueCreateInfos = &queueCreateInfo;
-    createInfo.queueCreateInfoCount = 1;
+    VkDeviceCreateInfo create_info = {};
+    create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    create_info.pQueueCreateInfos = &queue_create_info;
+    create_info.queueCreateInfoCount = 1;
 
-    createInfo.pEnabledFeatures = &deviceFeatures;
+    create_info.pEnabledFeatures = &deviceFeatures;
 
-    createInfo.enabledExtensionCount = 0;
+    create_info.enabledExtensionCount = 0;
 
     if (enable_validation_layers) {
         // create the validation layer 
         const char *layer[] = {"VK_LAYER_KHRONOS_validation"};
-        createInfo.enabledLayerCount = (uint32_t) 1;
-        createInfo.ppEnabledLayerNames = layer;
+        create_info.enabledLayerCount = (uint32_t) 1;
+        create_info.ppEnabledLayerNames = layer;
     } else {
-        createInfo.ppEnabledLayerNames = NULL;
-        createInfo.enabledLayerCount = 0;
+        create_info.ppEnabledLayerNames = NULL;
+        create_info.enabledLayerCount = 0;
     }
 
-    if (vkCreateDevice(physical_device, &createInfo, NULL, &logical_device) != VK_SUCCESS) {
+    if (vkCreateDevice(physical_device, &create_info, NULL, &logical_device) != VK_SUCCESS) {
         return false;
     }
 
+    vkGetDeviceQueue(logical_device, indices.graphics_family, 0, &graphics_queue);
     return true;
 }
