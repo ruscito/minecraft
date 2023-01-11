@@ -15,6 +15,14 @@ static GLFWwindow *wnd;
 static VkSurfaceKHR surface;
 
 
+#if defined(__APPLE__)
+// https://stackoverflow.com/questions/68127785/how-to-fix-vk-khr-portability-subset-error-on-mac-m1-while-following-vulkan-tuto
+static const char* device_extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, "VK_KHR_portability_subset"};
+#else
+static const char* device_extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+#endif
+
+
 
 #ifdef NDEBUG
     static const bool enable_validation_layers = false;
@@ -171,91 +179,6 @@ static void setup_messanger_create_info() {
     messanger_create_info.pUserData = NULL; // Optional
 }
 
-static bool create_vulkan_instance() {
-    
-    VkApplicationInfo app_info = {};
-    app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    app_info.pApplicationName = "Minecraft";
-    app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    app_info.pEngineName = "No Engine";
-    app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    app_info.apiVersion = VK_API_VERSION_1_0;
-    
-    uint32_t count=0;
-    uint32_t aux_count = 0;
-
-    const char** glfwExtensions;
-    //const char** extensions;
-
-    glfwExtensions = glfwGetRequiredInstanceExtensions(&count);
-    aux_count = (enable_validation_layers) ? count + 1: count;
-
-    const char* extensions[count]; 
-    for(int i=0; i<count; i++) {
-        extensions[i] = glfwExtensions[i];
-    }
-
-    // add only if validation callback is needed
-    if (enable_validation_layers) {
-        extensions[count] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
-        count = aux_count;
-    }
-
-#if defined(__APPLE__)
-    count ++;
-    const char *apple_extra_extensions[count];
-    for(int i=0; i<count-1; i++) {
-        apple_extra_extensions[i] = extensions[i];
-    }
-    apple_extra_extensions[count-1] = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
-    INFO("Required extensions:")
-    for(int i=0; i<count; i++){
-        INFO("  %s", apple_extra_extensions[i]);
-    }
-#else
-    INFO("Required extensions:")
-    for(int i=0; i<count; i++){
-        INFO("  %s", extensions[i]);
-    }
-#endif
-
-    VkInstanceCreateInfo create_info={};
-    create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    create_info.pApplicationInfo = &app_info;
-#if defined(__APPLE__)
-    create_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
-    create_info.ppEnabledExtensionNames = apple_extra_extensions;
-#else
-    create_info.ppEnabledExtensionNames = extensions;
-#endif
-    
-    // create the validation layer 
-    const char *layer[] = {"VK_LAYER_KHRONOS_validation"};
-    
-    if (enable_validation_layers && is_validation_layer_available("VK_LAYER_KHRONOS_validation")){
-        INFO("Validation layer [%s] available", "VK_LAYER_KHRONOS_validation");
-        setup_messanger_create_info();
-        create_info.enabledLayerCount = (uint32_t) 1;
-        create_info.ppEnabledLayerNames = layer;
-        create_info.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)  &messanger_create_info;
-    } else {
-        create_info.enabledLayerCount = 0;
-        create_info.ppEnabledLayerNames = NULL;
-    }
-
-    create_info.enabledExtensionCount = count;
-    
-    VkResult result = vkCreateInstance(&create_info, NULL, &instance);
-
-    if (result != VK_SUCCESS) {
-        FATAL("Failed to create instance: %d", result);
-        return false;
-    }
-
-    INFO("Vulkan instance created");
-    return true;
-}
-
 static bool pick_physical_device(){
     // pick a graphic card
     uint32_t device_count;
@@ -336,7 +259,7 @@ static queue_family_indices_t find_queue_families(){
 }
 
 static bool create_logical_device(){
-    queue_family_indices_t indices =find_queue_families(physical_device);
+    queue_family_indices_t indices =find_queue_families();
 
     VkDeviceQueueCreateInfo queue_create_info = {};
     queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -351,10 +274,17 @@ static bool create_logical_device(){
     create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     create_info.pQueueCreateInfos = &queue_create_info;
     create_info.queueCreateInfoCount = 1;
-
     create_info.pEnabledFeatures = &deviceFeatures;
 
-    create_info.enabledExtensionCount = 0;
+https://stackoverflow.com/questions/68127785/how-to-fix-vk-khr-portability-subset-error-on-mac-m1-while-following-vulkan-tuto    
+#if defined(__APPLE__)
+    create_info.enabledExtensionCount = 2;
+    create_info.ppEnabledExtensionNames = device_extensions;
+#else
+    create_info.enabledExtensionCount = 1;
+    create_info.ppEnabledExtensionNames = device_extensions;
+#endif
+
 
     if (enable_validation_layers) {
         // create the validation layer 
@@ -372,5 +302,92 @@ static bool create_logical_device(){
     }
 
     vkGetDeviceQueue(logical_device, indices.graphics_family, 0, &graphics_queue);
+    return true;
+}
+
+static bool create_vulkan_instance() {
+    VkApplicationInfo app_info = {};
+    app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    app_info.pApplicationName = "Minecraft";
+    app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+    app_info.pEngineName = "No Engine";
+    app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+    app_info.apiVersion = VK_API_VERSION_1_0;
+    
+    uint32_t count=0;
+    uint32_t aux_count = 0;
+
+    const char** glfwExtensions;
+    //const char** extensions;
+
+    glfwExtensions = glfwGetRequiredInstanceExtensions(&count);
+    aux_count = (enable_validation_layers) ? count + 1: count;
+
+    const char* extensions[count]; 
+    for(int i=0; i<count; i++) {
+        extensions[i] = glfwExtensions[i];
+    }
+
+    // add only if validation callback is needed
+    if (enable_validation_layers) {
+        extensions[count] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+        count = aux_count;
+    }
+
+#if defined(__APPLE__)
+    //count ++;
+    const char *apple_extra_extensions[count+2];
+    for(int i=0; i<count; i++) {
+        apple_extra_extensions[i] = extensions[i];
+    }
+    apple_extra_extensions[count] = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
+    // https://stackoverflow.com/questions/68127785/how-to-fix-vk-khr-portability-subset-error-on-mac-m1-while-following-vulkan-tuto
+    apple_extra_extensions[count+1] = "VK_KHR_get_physical_device_properties2";
+    INFO("Required extensions:")
+    count +=2;
+    for(int i=0; i<count; i++){
+        INFO("  %s", apple_extra_extensions[i]);
+    }
+#else
+    INFO("Required extensions:")
+    for(int i=0; i<count; i++){
+        INFO("  %s", extensions[i]);
+    }
+#endif
+
+    VkInstanceCreateInfo create_info={};
+    create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    create_info.pApplicationInfo = &app_info;
+#if defined(__APPLE__)
+    create_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+    create_info.ppEnabledExtensionNames = apple_extra_extensions;
+#else
+    create_info.ppEnabledExtensionNames = extensions;
+#endif
+    
+    // create the validation layer 
+    const char *layer[] = {"VK_LAYER_KHRONOS_validation"};
+    
+    if (enable_validation_layers && is_validation_layer_available("VK_LAYER_KHRONOS_validation")){
+        INFO("Validation layer [%s] available", "VK_LAYER_KHRONOS_validation");
+        setup_messanger_create_info();
+        create_info.enabledLayerCount = (uint32_t) 1;
+        create_info.ppEnabledLayerNames = layer;
+        create_info.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)  &messanger_create_info;
+    } else {
+        create_info.enabledLayerCount = 0;
+        create_info.ppEnabledLayerNames = NULL;
+    }
+
+    create_info.enabledExtensionCount = count;
+    
+    VkResult result = vkCreateInstance(&create_info, NULL, &instance);
+
+    if (result != VK_SUCCESS) {
+        FATAL("Failed to create instance: %d", result);
+        return false;
+    }
+
+    INFO("Vulkan instance created");
     return true;
 }
