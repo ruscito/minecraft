@@ -1,5 +1,4 @@
 #include "vulkan_if.h"
-#include "GLFW/glfw3.h"
 #include "log.h"
 
 #include <string.h>
@@ -12,6 +11,8 @@ static VkPhysicalDevice physical_device = VK_NULL_HANDLE;
 static VkDebugUtilsMessengerEXT debug_messenger;
 static VkDebugUtilsMessengerCreateInfoEXT messanger_create_info = {};
 static VkQueue graphics_queue; // handler to the graphics queue
+static GLFWwindow *wnd;
+static VkSurfaceKHR surface;
 
 
 
@@ -37,37 +38,37 @@ static bool create_vulkan_instance();
 static bool pick_physical_device();
 static queue_family_indices_t find_queue_families();
 static bool create_logical_device();
+static bool create_surface();
 
 
+bool init_vulkan(GLFWwindow *window){
+    wnd = window;
 
-bool init_vulkan(){
-    if (create_vulkan_instance()) {
-        // setup the debug messenger
-        setup_debug_messenger( &messanger_create_info);
+    if (!create_vulkan_instance()) return false;
+    setup_debug_messenger( &messanger_create_info);
+    if (!create_surface()) return false;
+    if (!pick_physical_device())  return false; // pick a GPU. This object will be implicitly destroyed whith VkInstance
+    if (!create_logical_device()) return false;
 
-        // pick a GPU. This object will be implicitly destroyed whith VkInstance
-        if (!pick_physical_device()) {
-            FATAL("Failed to pick a GPU");
-            return false;
-        }
-
-        // create the logical device
-        if (!create_logical_device()) {
-            FATAL("Failed to create a logical device");
-            return false;
-        }
-        return true;
-    }
-    return false;
+    return true;
 }
 
 void destroy_vulkan() {
     vkDestroyDevice(logical_device, NULL);
     destroy_debug_messanger();
+    vkDestroySurfaceKHR(instance, surface, NULL);
     vkDestroyInstance(instance, NULL);
     INFO("Vulkan destroyed")
 }
 
+static bool create_surface() {
+    if (glfwCreateWindowSurface(instance, wnd, NULL, &surface) != VK_SUCCESS) {
+        FATAL("Failed to pick a GPU");
+        return false;
+    }
+
+    return true;
+}
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
@@ -311,7 +312,7 @@ static bool pick_physical_device(){
         FATAL("Phisical device do not support graphichs queue");
         return false;
     }
-
+    
     return true;
 }
 
@@ -366,6 +367,7 @@ static bool create_logical_device(){
     }
 
     if (vkCreateDevice(physical_device, &create_info, NULL, &logical_device) != VK_SUCCESS) {
+        FATAL("Failed to create a logical device");
         return false;
     }
 
