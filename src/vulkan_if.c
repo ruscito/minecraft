@@ -17,9 +17,11 @@ static VkSurfaceKHR surface;
 
 #if defined(__APPLE__)
 // https://stackoverflow.com/questions/68127785/how-to-fix-vk-khr-portability-subset-error-on-mac-m1-while-following-vulkan-tuto
-static const char* device_extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, "VK_KHR_portability_subset"};
+    static const char* device_extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, "VK_KHR_portability_subset"};
+    static uint32_t devie_extensions_count = 2;
 #else
-static const char* device_extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    static const char* device_extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    static uint32_t devie_extensions_count = 1;
 #endif
 
 
@@ -47,6 +49,7 @@ static bool pick_physical_device();
 static queue_family_indices_t find_queue_families();
 static bool create_logical_device();
 static bool create_surface();
+static bool check_device_extension_support();
 
 
 bool init_vulkan(GLFWwindow *window){
@@ -231,11 +234,17 @@ static bool pick_physical_device(){
 
     queue_family_indices_t indices =find_queue_families();
 
-    if (indices.graphics_family == UINT32_MAX) {
+    if (indices.graphics_family == UINT32_MAX ) {
         FATAL("Phisical device do not support graphichs queue");
         return false;
     }
-    
+
+    if(!check_device_extension_support()) {
+        FATAL("Phisical device do not support required extensions");
+        return false;
+    }
+
+
     return true;
 }
 
@@ -268,13 +277,13 @@ static bool create_logical_device(){
     float queuePriority = 1.0f;
     queue_create_info.pQueuePriorities = &queuePriority;
 
-    VkPhysicalDeviceFeatures deviceFeatures = {};
+    VkPhysicalDeviceFeatures device_features = {};
 
     VkDeviceCreateInfo create_info = {};
     create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     create_info.pQueueCreateInfos = &queue_create_info;
     create_info.queueCreateInfoCount = 1;
-    create_info.pEnabledFeatures = &deviceFeatures;
+    create_info.pEnabledFeatures = &device_features;
 
 https://stackoverflow.com/questions/68127785/how-to-fix-vk-khr-portability-subset-error-on-mac-m1-while-following-vulkan-tuto    
 #if defined(__APPLE__)
@@ -303,6 +312,26 @@ https://stackoverflow.com/questions/68127785/how-to-fix-vk-khr-portability-subse
 
     vkGetDeviceQueue(logical_device, indices.graphics_family, 0, &graphics_queue);
     return true;
+}
+
+static bool check_device_extension_support() {
+    uint32_t extensions_count = 0;
+    bool all_extensions_supported = false;
+
+    vkEnumerateDeviceExtensionProperties(physical_device, NULL, &extensions_count, NULL);
+    VkExtensionProperties available_extension[extensions_count];
+    vkEnumerateDeviceExtensionProperties(physical_device, NULL, &extensions_count, available_extension);
+    for (int j=0; j<devie_extensions_count; j++) {   
+        all_extensions_supported = false;
+        for (int i=0; i<extensions_count; i++) {
+            if (strcmp(device_extensions[j], available_extension[i].extensionName)==0) {
+                all_extensions_supported = true;
+                break;
+            }
+        }
+    }
+
+    return all_extensions_supported;
 }
 
 static bool create_vulkan_instance() {
