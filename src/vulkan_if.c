@@ -39,6 +39,13 @@ static struct queue_family_indices queue_indices;
 
 
 
+struct swap_chain_support_details {
+    VkSurfaceCapabilitiesKHR capabilities;
+    VkSurfaceFormatKHR *formats;
+    VkPresentModeKHR *present_modes;
+};
+
+
 // function declaration
 static void setup_messanger_create_info();
 static void setup_debug_messenger();
@@ -52,6 +59,28 @@ static void find_queue_families();
 static bool create_logical_device();
 static bool create_surface();
 static bool check_device_extension_support();
+static struct swap_chain_support_details query_swap_chain_support();
+
+
+static struct swap_chain_support_details query_swap_chain_support() {
+    struct swap_chain_support_details details;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &details.capabilities);
+
+    uint32_t format_count;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, NULL);
+    if (format_count > 0) {
+        details.formats = malloc(format_count * sizeof(*details.formats));
+        vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, details.formats);
+    }
+
+    uint32_t present_mode_count;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, NULL);
+    if (present_mode_count > 0) {
+        details.present_modes = malloc(present_mode_count * sizeof(*details.present_modes));
+    }
+    
+}
+
 
 
 bool init_vulkan(GLFWwindow *window){
