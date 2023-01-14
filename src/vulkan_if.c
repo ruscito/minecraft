@@ -5,15 +5,21 @@
 #include <stdlib.h>
 #include <limits.h>
 
+struct  queue_family_indices {
+    uint32_t graphics_family;
+    uint32_t present_family;
+};
+
 static VkInstance instance;
 static VkDevice logical_device = VK_NULL_HANDLE; // the logical device
 static VkPhysicalDevice physical_device = VK_NULL_HANDLE; 
 static VkDebugUtilsMessengerEXT debug_messenger;
 static VkDebugUtilsMessengerCreateInfoEXT messanger_create_info = {};
 static VkQueue graphics_queue; // handler to the graphics queue
+static VkQueue present_queue; // handler to the graphics queue
 static GLFWwindow *wnd;
 static VkSurfaceKHR surface;
-
+static struct queue_family_indices queue_indices; 
 
 #if defined(__APPLE__)
 // https://stackoverflow.com/questions/68127785/how-to-fix-vk-khr-portability-subset-error-on-mac-m1-while-following-vulkan-tuto
@@ -25,7 +31,6 @@ static VkSurfaceKHR surface;
 #endif
 
 
-
 #ifdef NDEBUG
     static const bool enable_validation_layers = false;
 #else
@@ -33,9 +38,6 @@ static VkSurfaceKHR surface;
 #endif
 
 
-typedef struct  queue_family_indices_t {
-    uint32_t graphics_family;
-}queue_family_indices_t;
 
 // function declaration
 static void setup_messanger_create_info();
@@ -46,7 +48,7 @@ static void destroy_debug_messanger();
 static void setup_messanger_create_info() ;
 static bool create_vulkan_instance();
 static bool pick_physical_device();
-static queue_family_indices_t find_queue_families();
+static void find_queue_families();
 static bool create_logical_device();
 static bool create_surface();
 static bool check_device_extension_support();
@@ -232,10 +234,16 @@ static bool pick_physical_device(){
         return false;
     }  
 
-    queue_family_indices_t indices =find_queue_families();
+    // find queue families
+    find_queue_families();
 
-    if (indices.graphics_family == UINT32_MAX ) {
-        FATAL("Phisical device do not support graphichs queue");
+    if (queue_indices.graphics_family == UINT32_MAX ) {
+        FATAL("Phisical device selected do not support graphichs queue");
+        return false;
+    }
+
+    if (queue_indices.present_family == UINT32_MAX ) {
+        FATAL("Phisical device selected do not support presentation");
         return false;
     }
 
@@ -244,45 +252,77 @@ static bool pick_physical_device(){
         return false;
     }
 
-
     return true;
 }
 
-static queue_family_indices_t find_queue_families(){
+static void find_queue_families(){
     // find grapichs queue family
-    queue_family_indices_t indices = {};
-    indices.graphics_family = UINT32_MAX;
+    queue_indices.graphics_family = UINT32_MAX;
+    queue_indices.present_family = UINT32_MAX;
 
     uint32_t queue_family_count;
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, NULL);
     VkQueueFamilyProperties queue_family[queue_family_count];
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_family);
+
+    INFO("Queue Families Supported")
+    for (int i=0; i<queue_family_count; i++){
+        INFO("  Queue Family Property:%d, can create up to :%d queue and supports:",i,  queue_family[i].queueCount);
+        if (queue_family[i].queueFlags & VK_QUEUE_GRAPHICS_BIT ) INFO("  ->%s", "Graphics operations");
+        if (queue_family[i].queueFlags & VK_QUEUE_COMPUTE_BIT  ) INFO("  ->%s", "Compute operations");
+        if (queue_family[i].queueFlags & VK_QUEUE_TRANSFER_BIT  ) INFO("  ->%s", "Transfer operations");
+        if (queue_family[i].queueFlags & VK_QUEUE_SPARSE_BINDING_BIT  ) INFO("  ->%s", "Sparse memory mangment operations");
+        VkBool32 present_support = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &present_support);
+        if (present_support) INFO("  ->%s", "Presentation");
+    }
     
     for (int i=0; i<queue_family_count; i++){
-        if(queue_family[i].queueFlags & VK_QUEUE_GRAPHICS_BIT){
-            indices.graphics_family = i;
+        if(queue_family[i].queueFlags & VK_QUEUE_GRAPHICS_BIT && queue_indices.graphics_family == UINT32_MAX){
+            queue_indices.graphics_family = i;
+            continue;
+        }
+
+        VkBool32 present_support = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &present_support);
+        if(present_support){
+            queue_indices.present_family =i;
+        }
+
+        if (queue_indices.graphics_family != UINT32_MAX && queue_indices.present_family != UINT32_MAX) {
+            INFO("Queue family selected for graphics operation :%d", queue_indices.graphics_family);
+            INFO("Queue family selected for presentaion support:%d", queue_indices.present_family);
+            break;
         }
     }
-
-    return indices;
 }
 
 static bool create_logical_device(){
-    queue_family_indices_t indices =find_queue_families();
+    // creating queue
 
-    VkDeviceQueueCreateInfo queue_create_info = {};
-    queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queue_create_info.queueFamilyIndex = indices.graphics_family;
-    queue_create_info.queueCount = 1;
-    float queuePriority = 1.0f;
-    queue_create_info.pQueuePriorities = &queuePriority;
+    uint32_t unique_queue_families[] = {queue_indices.graphics_family, queue_indices.present_family};
+    float queue_priority =  1.0f;
 
+   
+    VkDeviceQueueCreateInfo queue_create_info [2] = {};
+ 
+    queue_create_info[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queue_create_info[0].queueFamilyIndex = unique_queue_families[0];
+    queue_create_info[0].queueCount = 1;
+    queue_create_info[0].pQueuePriorities = &queue_priority;
+
+ 
+    queue_create_info[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queue_create_info[1].queueFamilyIndex = unique_queue_families[1];
+    queue_create_info[1].queueCount = 1;
+    queue_create_info[1].pQueuePriorities = &queue_priority;
+  
     VkPhysicalDeviceFeatures device_features = {};
 
     VkDeviceCreateInfo create_info = {};
     create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    create_info.pQueueCreateInfos = &queue_create_info;
-    create_info.queueCreateInfoCount = 1;
+    create_info.pQueueCreateInfos = queue_create_info;
+    create_info.queueCreateInfoCount = 2;
     create_info.pEnabledFeatures = &device_features;
 
 https://stackoverflow.com/questions/68127785/how-to-fix-vk-khr-portability-subset-error-on-mac-m1-while-following-vulkan-tuto    
@@ -310,7 +350,8 @@ https://stackoverflow.com/questions/68127785/how-to-fix-vk-khr-portability-subse
         return false;
     }
 
-    vkGetDeviceQueue(logical_device, indices.graphics_family, 0, &graphics_queue);
+    vkGetDeviceQueue(logical_device, queue_indices.graphics_family, 0, &graphics_queue);
+    vkGetDeviceQueue(logical_device, queue_indices.present_family, 0, &present_queue);
     return true;
 }
 
@@ -420,3 +461,4 @@ static bool create_vulkan_instance() {
     INFO("Vulkan instance created");
     return true;
 }
+
