@@ -63,7 +63,11 @@ static struct swap_chain_support_details query_swap_chain_support();
 
 
 static struct swap_chain_support_details query_swap_chain_support() {
+    // Swap chain support is sufficient for this tutorial if there is at least one supported 
+    // image format and one supported presentation mode given the window surface we have.
     struct swap_chain_support_details details;
+    details.formats = NULL;
+    details.present_modes = NULL;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &details.capabilities);
 
     uint32_t format_count;
@@ -78,7 +82,8 @@ static struct swap_chain_support_details query_swap_chain_support() {
     if (present_mode_count > 0) {
         details.present_modes = malloc(present_mode_count * sizeof(*details.present_modes));
     }
-    
+
+    return details;
 }
 
 
@@ -279,6 +284,17 @@ static bool pick_physical_device(){
     if(!check_device_extension_support()) {
         FATAL("Phisical device do not support required extensions");
         return false;
+    }
+
+    struct swap_chain_support_details swap_chain_support = query_swap_chain_support();
+    if(swap_chain_support.formats == NULL) {
+        FATAL("swapchain do not support image format");
+        return false;       
+    }
+
+    if(swap_chain_support.present_modes == NULL) {
+        FATAL("swapchain do not support presentation mode");
+        return false;       
     }
 
     return true;

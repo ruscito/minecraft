@@ -1,5 +1,8 @@
 # minecraft
 
+Another unneeded minecraft clone :) 
+
+Just an excuse to learn Vulkan
 
 For windows compilation:
 download https://www.msys2.org/

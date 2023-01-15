@@ -20,6 +20,9 @@ static char *level_string[6] = {
   "[FATAL] ",
 };
 
+//
+// TODO: disable coloring under windows terminal
+//
 void console_write(const char *message, char color){
     // ref: https://stackoverflow.com/questions/33309136/change-color-in-os-x-console-output
     const char *message_color[] = {"\x1b[36m",
