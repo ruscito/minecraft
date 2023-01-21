@@ -1,5 +1,6 @@
 #include "vulkan_if.h"
 #include "log.h"
+#include "window.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -9,6 +10,14 @@ struct  queue_family_indices {
     uint32_t graphics_family;
     uint32_t present_family;
 };
+
+typedef struct swap_chain {
+    VkSwapchainKHR handle; // handle to the swap chain not sure we realy need this
+    uint32_t images_count;
+    VkImage *images;
+    VkFormat image_format;
+    VkExtent2D extent;
+} swap_chain_t;
 
 static VkInstance instance;
 static VkDevice logical_device = VK_NULL_HANDLE; // the logical device
@@ -20,6 +29,8 @@ static VkQueue present_queue; // handler to the graphics queue
 static GLFWwindow *wnd;
 static VkSurfaceKHR surface;
 static struct queue_family_indices queue_indices; 
+swap_chain_t swap_chain;
+
 
 #if defined(__APPLE__)
 // https://stackoverflow.com/questions/68127785/how-to-fix-vk-khr-portability-subset-error-on-mac-m1-while-following-vulkan-tuto
@@ -38,12 +49,13 @@ static struct queue_family_indices queue_indices;
 #endif
 
 
-
 struct swap_chain_support_details {
     VkSurfaceCapabilitiesKHR capabilities;
     VkSurfaceFormatKHR *formats;
+    uint32_t formats_count;
     VkPresentModeKHR *present_modes;
-};
+    uint32_t present_modes_count;
+} ;
 
 
 // function declaration
@@ -60,32 +72,12 @@ static bool create_logical_device();
 static bool create_surface();
 static bool check_device_extension_support();
 static struct swap_chain_support_details query_swap_chain_support();
-
-
-static struct swap_chain_support_details query_swap_chain_support() {
-    // Swap chain support is sufficient for this tutorial if there is at least one supported 
-    // image format and one supported presentation mode given the window surface we have.
-    struct swap_chain_support_details details;
-    details.formats = NULL;
-    details.present_modes = NULL;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &details.capabilities);
-
-    uint32_t format_count;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, NULL);
-    if (format_count > 0) {
-        details.formats = malloc(format_count * sizeof(*details.formats));
-        vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, details.formats);
-    }
-
-    uint32_t present_mode_count;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, NULL);
-    if (present_mode_count > 0) {
-        details.present_modes = malloc(present_mode_count * sizeof(*details.present_modes));
-    }
-
-    return details;
-}
-
+static VkSurfaceFormatKHR choose_swap_surface_format(const VkSurfaceFormatKHR  *available_formats, uint32_t count);
+static VkPresentModeKHR choose_swap_present_mode(const VkPresentModeKHR *availabl_present_modes, uint32_t count); 
+static VkExtent2D choose_swap_extent(const VkSurfaceCapabilitiesKHR capabilities);
+static bool create_swap_chain();
+static void destroy_swap_chain();
+static uint32_t clamp(uint32_t val, uint32_t min, uint32_t max);
 
 
 bool init_vulkan(GLFWwindow *window){
@@ -96,11 +88,12 @@ bool init_vulkan(GLFWwindow *window){
     if (!create_surface()) return false;
     if (!pick_physical_device())  return false; // pick a GPU. This object will be implicitly destroyed whith VkInstance
     if (!create_logical_device()) return false;
-
+    if (!create_swap_chain()) return false;
     return true;
 }
 
 void destroy_vulkan() {
+    destroy_swap_chain();
     vkDestroyDevice(logical_device, NULL);
     destroy_debug_messanger();
     vkDestroySurfaceKHR(instance, surface, NULL);
@@ -325,7 +318,7 @@ static void find_queue_families(){
     for (int i=0; i<queue_family_count; i++){
         if(queue_family[i].queueFlags & VK_QUEUE_GRAPHICS_BIT && queue_indices.graphics_family == UINT32_MAX){
             queue_indices.graphics_family = i;
-            continue;
+            //continue; in case we want to select different family for the presenter 
         }
 
         VkBool32 present_support = false;
@@ -343,31 +336,43 @@ static void find_queue_families(){
 }
 
 static bool create_logical_device(){
-    // creating queue
 
-    uint32_t unique_queue_families[] = {queue_indices.graphics_family, queue_indices.present_family};
-    float queue_priority =  1.0f;
-
-   
-    VkDeviceQueueCreateInfo queue_create_info [2] = {};
- 
-    queue_create_info[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queue_create_info[0].queueFamilyIndex = unique_queue_families[0];
-    queue_create_info[0].queueCount = 1;
-    queue_create_info[0].pQueuePriorities = &queue_priority;
-
- 
-    queue_create_info[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queue_create_info[1].queueFamilyIndex = unique_queue_families[1];
-    queue_create_info[1].queueCount = 1;
-    queue_create_info[1].pQueuePriorities = &queue_priority;
-  
     VkPhysicalDeviceFeatures device_features = {};
-
     VkDeviceCreateInfo create_info = {};
+    float queue_priority =  1.0f;
+    uint32_t create_info_count = 0;
+
+    if (queue_indices.graphics_family != queue_indices.present_family) {
+        uint32_t queue_families[] = {queue_indices.graphics_family, queue_indices.present_family};
+        VkDeviceQueueCreateInfo queue_create_info [2] = {};
+    
+        queue_create_info[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queue_create_info[0].queueFamilyIndex = queue_families[0];
+        queue_create_info[0].queueCount = 1;
+        queue_create_info[0].pQueuePriorities = &queue_priority;
+
+    
+        queue_create_info[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queue_create_info[1].queueFamilyIndex = queue_families[1];
+        queue_create_info[1].queueCount = 1;
+        queue_create_info[1].pQueuePriorities = &queue_priority;
+
+        create_info.pQueueCreateInfos = queue_create_info;
+        create_info.queueCreateInfoCount = 2;
+    } else  {
+        VkDeviceQueueCreateInfo queue_create_info = {};
+    
+        queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queue_create_info.queueFamilyIndex = queue_indices.graphics_family;
+        queue_create_info.queueCount = 1;
+        queue_create_info.pQueuePriorities = &queue_priority;
+        create_info.pQueueCreateInfos = &queue_create_info; 
+        create_info.queueCreateInfoCount = 1; 
+    }
+  
     create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    create_info.pQueueCreateInfos = queue_create_info;
-    create_info.queueCreateInfoCount = 2;
+    //create_info.pQueueCreateInfos = queue_create_info; 
+    //create_info.queueCreateInfoCount = 2;
     create_info.pEnabledFeatures = &device_features;
 
 https://stackoverflow.com/questions/68127785/how-to-fix-vk-khr-portability-subset-error-on-mac-m1-while-following-vulkan-tuto    
@@ -507,3 +512,126 @@ static bool create_vulkan_instance() {
     return true;
 }
 
+static uint32_t clamp(uint32_t val, uint32_t min, uint32_t max) {
+    const uint32_t m = val < min ? min : val;
+    return m> max ? max : m;
+}
+
+static VkSurfaceFormatKHR choose_swap_surface_format(const VkSurfaceFormatKHR  *available_formats, uint32_t count){
+    for (int i=0; i<count; i++) {
+        if (available_formats[i].format == VK_FORMAT_B8G8R8A8_SRGB && 
+            available_formats[i].colorSpace== VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+                return available_formats[i];
+            } 
+    }
+    return available_formats[0];
+}
+
+static VkPresentModeKHR choose_swap_present_mode(const VkPresentModeKHR *available_present_modes, uint32_t count){
+    for (int i=0; i<count; i++){
+        if (available_present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
+            return available_present_modes[i];
+        }
+    }
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+static VkExtent2D choose_swap_extent(const VkSurfaceCapabilitiesKHR capabilities) {
+    if (capabilities.currentExtent.width !=  UINT32_MAX) {
+        return capabilities.currentExtent;
+    } else {
+        int width, height;
+        glfwGetFramebufferSize(window.handle, &width, &height);
+
+        VkExtent2D actual_extend = {};
+        actual_extend.width  = clamp(actual_extend.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+        actual_extend.height  = clamp(actual_extend.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+        return actual_extend;
+    }
+}
+
+static struct swap_chain_support_details query_swap_chain_support() {
+    // Swap chain support is sufficient for this tutorial if there is at least one supported 
+    // image format and one supported presentation mode given the window surface we have.
+    struct swap_chain_support_details details;
+    details.formats = NULL;
+    details.present_modes = NULL;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &details.capabilities);
+
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &details.formats_count, NULL);
+    if (details.formats_count > 0) {
+        details.formats = malloc(details.formats_count * sizeof(*details.formats));
+        vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &details.formats_count, details.formats);
+    }
+
+
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &details.present_modes_count, NULL);
+    if (details.present_modes_count > 0) {
+        details.present_modes = malloc(details.present_modes_count * sizeof(*details.present_modes));
+        vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &details.present_modes_count, details.present_modes);
+    }
+
+    return details;
+}
+
+
+static bool create_swap_chain() {
+    struct swap_chain_support_details details = query_swap_chain_support();
+
+    VkSurfaceFormatKHR surface_format = choose_swap_surface_format(details.formats, details.formats_count);
+    VkPresentModeKHR present_mode = choose_swap_present_mode(details.present_modes, details.present_modes_count);
+    VkExtent2D extent = choose_swap_extent(details.capabilities);
+
+
+    uint32_t image_count = details.capabilities.minImageCount + 1;
+    if (details.capabilities.maxImageCount > 0 && image_count > details.capabilities.maxImageCount) {
+        image_count = details.capabilities.maxImageCount;
+    }
+
+    // now the usual struct
+    VkSwapchainCreateInfoKHR create_info = {};
+    create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    create_info.surface = surface;
+    create_info.minImageCount = image_count;
+    create_info.imageFormat = surface_format.format;
+    create_info.imageColorSpace = surface_format.colorSpace;
+    create_info.imageExtent = extent;
+    create_info.imageArrayLayers = 1;
+    create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    if (queue_indices.graphics_family != queue_indices.present_family) {
+        uint32_t queue_families[] = {queue_indices.graphics_family, queue_indices.present_family};
+        create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+        create_info.queueFamilyIndexCount = 2;
+        create_info.pQueueFamilyIndices = queue_families;
+    } else  {
+        create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        create_info.queueFamilyIndexCount = 0; // Optional
+        create_info.pQueueFamilyIndices = NULL; // Optional
+    }
+
+    create_info.preTransform = details.capabilities.currentTransform;
+    create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    create_info.presentMode = present_mode;
+    create_info.clipped = VK_TRUE;
+    create_info.oldSwapchain = VK_NULL_HANDLE;
+    if (vkCreateSwapchainKHR(logical_device, &create_info, NULL, &swap_chain.handle) != VK_SUCCESS) {
+        FATAL("Failed to create a swap chain");
+        return false;
+    }
+
+    swap_chain.image_format = surface_format.format;
+    swap_chain.extent = extent;
+
+    // retriving swap chain images
+    vkGetSwapchainImagesKHR(logical_device, swap_chain.handle, &swap_chain.images_count, NULL);
+    swap_chain.images = malloc(swap_chain.images_count * sizeof *swap_chain.images);
+    vkGetSwapchainImagesKHR(logical_device, swap_chain.handle, &swap_chain.images_count, swap_chain.images);    
+    return true;
+}
+
+
+static void destroy_swap_chain() {
+    free(swap_chain.images);
+    vkDestroySwapchainKHR(logical_device, swap_chain.handle, NULL);
+}
