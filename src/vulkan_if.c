@@ -12,11 +12,12 @@ struct  queue_family_indices {
 };
 
 typedef struct swap_chain {
-    VkSwapchainKHR handle; // handle to the swap chain not sure we realy need this
-    uint32_t images_count;
-    VkImage *images;
-    VkFormat image_format;
-    VkExtent2D extent;
+    VkSwapchainKHR handle;      // handle to the swap chain not sure we realy need this
+    uint32_t images_count;      // number of images in the swap chain
+    VkImage *images;            // the array of images
+    VkImageView *image_views;   // the view into the image
+    VkFormat image_format;  
+    VkExtent2D extent;      
 } swap_chain_t;
 
 static VkInstance instance;
@@ -78,6 +79,9 @@ static VkExtent2D choose_swap_extent(const VkSurfaceCapabilitiesKHR capabilities
 static bool create_swap_chain();
 static void destroy_swap_chain();
 static uint32_t clamp(uint32_t val, uint32_t min, uint32_t max);
+static bool create_image_views();
+static void destroy_image_views();
+
 
 
 bool init_vulkan(GLFWwindow *window){
@@ -89,10 +93,12 @@ bool init_vulkan(GLFWwindow *window){
     if (!pick_physical_device())  return false; // pick a GPU. This object will be implicitly destroyed whith VkInstance
     if (!create_logical_device()) return false;
     if (!create_swap_chain()) return false;
+    if (!create_image_views()) return false;
     return true;
 }
 
 void destroy_vulkan() {
+    destroy_image_views();
     destroy_swap_chain();
     vkDestroyDevice(logical_device, NULL);
     destroy_debug_messanger();
@@ -142,7 +148,10 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
         WARNING("Vulkan %s %s", type_info, callback_data->pMessage);
         break;
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+        // TODO:
+        // maybe find a better way to close in case of a fatal vulkan error
         FATAL("Vulkan %s %s", type_info, callback_data->pMessage);
+        glfwTerminate();
         break;
     default:
         break;
@@ -630,8 +639,40 @@ static bool create_swap_chain() {
     return true;
 }
 
-
 static void destroy_swap_chain() {
     free(swap_chain.images);
     vkDestroySwapchainKHR(logical_device, swap_chain.handle, NULL);
+}
+
+static bool create_image_views(){
+    swap_chain.image_views = malloc(swap_chain.images_count * sizeof *swap_chain.image_views);
+    for (int i=0; i<swap_chain.images_count; i++) {
+        VkImageViewCreateInfo create_info = {};
+        create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        create_info.image = swap_chain.images[i];
+        create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        create_info.format = swap_chain.image_format;
+        create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        create_info.subresourceRange.baseMipLevel = 0;
+        create_info.subresourceRange.levelCount = 1;
+        create_info.subresourceRange.baseArrayLayer = 0;
+        create_info.subresourceRange.layerCount = 1;
+
+        if (vkCreateImageView(logical_device, &create_info, NULL, &swap_chain.image_views[i]) != VK_SUCCESS) {
+            FATAL("Fail to create image views");
+            return false;
+        }
+    }
+    return true;   
+}
+
+static void destroy_image_views() {
+    if (swap_chain.image_views == NULL) return;
+    for (int i=0; i<swap_chain.images_count; i++) {
+        vkDestroyImageView(logical_device, swap_chain.image_views[i], NULL);
+    }
 }
