@@ -2,6 +2,10 @@
 .vscode/
 .vs/
 .DS_Store
+.lib
+.bin
+.out
+.a
 cmake-build-debug/
 bin/
 build/
