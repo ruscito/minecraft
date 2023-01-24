@@ -1,6 +1,7 @@
 #include "vulkan_if.h"
 #include "log.h"
 #include "window.h"
+#include "pipeline.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -94,6 +95,8 @@ bool init_vulkan(GLFWwindow *window){
     if (!create_logical_device()) return false;
     if (!create_swap_chain()) return false;
     if (!create_image_views()) return false;
+    if (!create_pipeline()) return false;
+
     return true;
 }
 
