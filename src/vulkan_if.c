@@ -12,17 +12,12 @@ struct  queue_family_indices {
     uint32_t present_family;
 };
 
-typedef struct swap_chain {
-    VkSwapchainKHR handle;      // handle to the swap chain not sure we realy need this
-    uint32_t images_count;      // number of images in the swap chain
-    VkImage *images;            // the array of images
-    VkImageView *image_views;   // the view into the image
-    VkFormat image_format;  
-    VkExtent2D extent;      
-} swap_chain_t;
+
+
+VkDevice logical_device = VK_NULL_HANDLE; // the logical device
+swap_chain_t swap_chain;
 
 static VkInstance instance;
-static VkDevice logical_device = VK_NULL_HANDLE; // the logical device
 static VkPhysicalDevice physical_device = VK_NULL_HANDLE; 
 static VkDebugUtilsMessengerEXT debug_messenger;
 static VkDebugUtilsMessengerCreateInfoEXT messanger_create_info = {};
@@ -31,7 +26,6 @@ static VkQueue present_queue; // handler to the graphics queue
 static GLFWwindow *wnd;
 static VkSurfaceKHR surface;
 static struct queue_family_indices queue_indices; 
-swap_chain_t swap_chain;
 
 
 #if defined(__APPLE__)
@@ -95,12 +89,15 @@ bool init_vulkan(GLFWwindow *window){
     if (!create_logical_device()) return false;
     if (!create_swap_chain()) return false;
     if (!create_image_views()) return false;
+    if (!create_render_passes()) return false;
     if (!create_pipeline()) return false;
 
     return true;
 }
 
 void destroy_vulkan() {
+    destroy_pipeline();
+    destroy_render_passes();
     destroy_image_views();
     destroy_swap_chain();
     vkDestroyDevice(logical_device, NULL);
