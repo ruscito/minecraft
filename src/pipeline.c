@@ -10,37 +10,30 @@ unsigned char *load_file(const char *file_name, size_t *bytes_read ){
     unsigned char *data = NULL;
     
     FILE  *file = fopen(file_name, "rb");
-    if (file != NULL) 
-    {
+    if (file != NULL)  {
         fseek(file, 0, SEEK_END);   //go to the end
         long size = ftell(file); //get current position
         fseek(file, 0, SEEK_SET);   //go back to the begining
 
-        if (size> 0) 
-        {
+        if (size> 0) {
             data = malloc (size * sizeof(unsigned char));
 
             size_t count = fread(data, sizeof(unsigned char), size, file);
             *bytes_read =  count;
 
-            if (count != size) 
-            {
+            if (count != size) {
                 WARNING("FILE I/O [%s] file partially loaded", file_name);
             }  
-            else 
-            {
+            else {
                 INFO("FILE I/O [%s] file loaded successfully", file_name);
             }
         } 
-        else 
-        {
+        else {
             ERROR("FILE I/O [%s] failed to read the file", file_name);
         }
-
         fclose(file);
     } 
-    else 
-    {
+    else {
         ERROR("FILE I/O [%s] failed to open the file", file_name);
     }
 
