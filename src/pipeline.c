@@ -8,8 +8,8 @@
 #include <stdbool.h>
 
 static VkPipelineLayout pipeline_layout;
-static VkRenderPass render_pass;
 
+VkRenderPass render_pass;
 VkPipeline pipeline;
 
 unsigned char *load_file(const char *file_name, size_t *bytes_read ){
@@ -59,10 +59,7 @@ static VkShaderModule create_shader_module(const unsigned char *code, size_t siz
     return shader_module;
 }
 
-
-
 bool create_pipeline() {
-
     size_t vert_shader_file_size;
     size_t frag_shader_file_size;
     unsigned char *vert_shader_file = load_file(SHADERS_PATH"triangle.vert.spv", &vert_shader_file_size);

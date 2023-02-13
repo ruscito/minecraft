@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 extern VkPipeline pipeline;
+extern VkRenderPass render_pass;
 
 unsigned char *load_file(const char *file_name, size_t *bytes_read );
 

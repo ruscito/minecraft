@@ -12,6 +12,7 @@ typedef struct swap_chain {
     VkImageView *image_views;   // the view into the image
     VkFormat image_format;  
     VkExtent2D extent;      
+    VkFramebuffer *framebuffers;
 } swap_chain_t;
 
 

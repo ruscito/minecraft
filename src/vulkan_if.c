@@ -76,6 +76,8 @@ static void destroy_swap_chain();
 static uint32_t clamp(uint32_t val, uint32_t min, uint32_t max);
 static bool create_image_views();
 static void destroy_image_views();
+static bool create_framebuffers();
+static void destroy_framebuffers();
 
 
 
@@ -91,11 +93,13 @@ bool init_vulkan(GLFWwindow *window){
     if (!create_image_views()) return false;
     if (!create_render_passes()) return false;
     if (!create_pipeline()) return false;
+    if (!create_framebuffers()) return false;
 
     return true;
 }
 
 void destroy_vulkan() {
+    destroy_framebuffers();
     destroy_pipeline();
     destroy_render_passes();
     destroy_image_views();
@@ -674,5 +678,40 @@ static void destroy_image_views() {
     if (swap_chain.image_views == NULL) return;
     for (int i=0; i<swap_chain.images_count; i++) {
         vkDestroyImageView(logical_device, swap_chain.image_views[i], NULL);
+    }
+}
+
+static bool create_framebuffers() {
+    swap_chain.framebuffers = malloc(swap_chain.images_count * sizeof(swap_chain.framebuffers ));
+    if (swap_chain.framebuffers  == NULL) {
+        FATAL("Failed to allocate memoty for the framebuffers");
+        return false;
+    }
+    
+    for (int i=0; i<swap_chain.images_count; i++) {
+        VkImageView attachments[] = {
+            swap_chain.image_views[i]
+        };
+
+        VkFramebufferCreateInfo framebuffer_info = {};
+        framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebuffer_info.renderPass = render_pass;
+        framebuffer_info.attachmentCount = 1;
+        framebuffer_info.pAttachments = attachments;
+        framebuffer_info.width = swap_chain.extent.width;
+        framebuffer_info.height = swap_chain.extent.height;
+        framebuffer_info.layers = 1;
+
+        if (vkCreateFramebuffer(logical_device, &framebuffer_info, NULL, &swap_chain.framebuffers[i]) != VK_SUCCESS) {
+            FATAL("Failed to create framebuffers");
+            return false;
+        }    
+    }
+    return true;
+}
+
+static void destroy_framebuffers() {
+    for (int i=0; i<swap_chain.images_count; i++) {
+        vkDestroyFramebuffer(logical_device,  swap_chain.framebuffers[i], NULL);
     }
 }
