@@ -13,6 +13,8 @@ typedef struct swap_chain {
     VkFormat image_format;  
     VkExtent2D extent;      
     VkFramebuffer *framebuffers;
+    VkCommandPool *command_pool;
+    VkCommandBuffer command_buffer;
 } swap_chain_t;
 
 

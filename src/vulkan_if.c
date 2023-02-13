@@ -28,6 +28,7 @@ static VkSurfaceKHR surface;
 static struct queue_family_indices queue_indices; 
 
 
+
 #if defined(__APPLE__)
 // https://stackoverflow.com/questions/68127785/how-to-fix-vk-khr-portability-subset-error-on-mac-m1-while-following-vulkan-tuto
     static const char* device_extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, "VK_KHR_portability_subset"};
@@ -78,6 +79,11 @@ static bool create_image_views();
 static void destroy_image_views();
 static bool create_framebuffers();
 static void destroy_framebuffers();
+static bool create_command_pool();
+static void destroy_command_pool();
+static bool create_command_buffer();
+static void destroy_command_buffer();
+static bool record_command_buffer(VkCommandBuffer command_buffer, uint32_t image_index);
 
 
 
@@ -94,11 +100,14 @@ bool init_vulkan(GLFWwindow *window){
     if (!create_render_passes()) return false;
     if (!create_pipeline()) return false;
     if (!create_framebuffers()) return false;
+    if (!create_command_pool()) return false;
+    if (!create_command_buffer()) return false;
 
     return true;
 }
 
 void destroy_vulkan() {
+    destroy_command_pool();
     destroy_framebuffers();
     destroy_pipeline();
     destroy_render_passes();
@@ -714,4 +723,89 @@ static void destroy_framebuffers() {
     for (int i=0; i<swap_chain.images_count; i++) {
         vkDestroyFramebuffer(logical_device,  swap_chain.framebuffers[i], NULL);
     }
+}
+
+static bool create_command_pool(){
+    VkCommandPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    pool_info.queueFamilyIndex = queue_indices.graphics_family;
+    if (vkCreateCommandPool(logical_device, &pool_info, NULL, &swap_chain.command_buffer) != VK_SUCCESS) {
+        FATAL("Failed to create command pool");
+        return false;
+    }
+    return true;
+}
+
+static void destroy_command_pool(){
+    vkDestroyCommandPool(logical_device,  swap_chain.command_pool, NULL);
+}
+
+static bool create_command_buffer(){
+    VkCommandBufferAllocateInfo alloc_info = {};
+    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    alloc_info.commandPool = swap_chain.command_pool;
+    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc_info.commandBufferCount = 1;
+
+    if (vkAllocateCommandBuffers(logical_device, &alloc_info, &swap_chain.command_buffer) != VK_SUCCESS) {
+        FATAL("Failed to create command buffer");
+        return false;
+    }
+    return true;
+}
+
+static bool record_command_buffer(VkCommandBuffer command_buffer, uint32_t image_index){
+    VkCommandBufferBeginInfo beginInfo = {};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = 0; // Optional
+    beginInfo.pInheritanceInfo = NULL; // Optional
+
+    if (vkBeginCommandBuffer(command_buffer, &beginInfo) != VK_SUCCESS) {
+        FATAL("Failed to begin recording command buffer!");
+        return false;
+    }
+
+    VkRenderPassBeginInfo renderPassInfo = {};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = render_pass;
+    renderPassInfo.framebuffer = swap_chain.framebuffers[image_index];
+
+    renderPassInfo.renderArea.offset.x = 0;
+    renderPassInfo.renderArea.offset.y = 0;
+    renderPassInfo.renderArea.extent = swap_chain.extent;
+
+    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
+
+    vkCmdBeginRenderPass(command_buffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+
+    VkViewport viewport = {};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (float) swap_chain.extent.width;
+    viewport.height = (float) swap_chain.extent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+
+    VkRect2D scissor = {};
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent =  swap_chain.extent;
+    vkCmdSetScissor(command_buffer, 0, 1, &scissor);    
+
+    vkCmdDraw(command_buffer, 3, 1, 0, 0);
+
+    vkCmdEndRenderPass(command_buffer);
+
+    if (vkEndCommandBuffer(command_buffer ) != VK_SUCCESS) {
+        FATAL("Failed to record command buffer!");
+        return false;
+    }
+
+    return true;
 }
