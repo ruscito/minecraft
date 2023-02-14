@@ -55,7 +55,8 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC RESOURCES_PATH="${CMAKE_CURREN
 target_compile_definitions(${PROJECT_NAME} PUBLIC SHADERS_PATH="${CMAKE_CURRENT_LIST_DIR}/shaders/")
 
 # Set the asset path macro in release mode to a relative path that assumes the assets folder is in the same directory as the game executable
-# target_compile_definitions(${PROJECT_NAME} PUBLIC RESOURCES_PATH="${./res")
+#target_compile_definitions(${PROJECT_NAME} PUBLIC RESOURCES_PATH="${./res/")
+#target_compile_definitions(${PROJECT_NAME} PUBLIC SHADERS_PATH="${./shaders/")
 
 
 

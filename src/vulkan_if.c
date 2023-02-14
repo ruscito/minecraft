@@ -27,6 +27,9 @@ static GLFWwindow *wnd;
 static VkSurfaceKHR surface;
 static struct queue_family_indices queue_indices; 
 
+VkSemaphore imageAvailableSemaphore;
+VkSemaphore renderFinishedSemaphore;
+VkFence inFlightFence;
 
 
 #if defined(__APPLE__)
@@ -84,6 +87,8 @@ static void destroy_command_pool();
 static bool create_command_buffer();
 static void destroy_command_buffer();
 static bool record_command_buffer(VkCommandBuffer command_buffer, uint32_t image_index);
+static bool create_sync_objects();
+static void destroy_sync_objects();
 
 
 
@@ -102,11 +107,13 @@ bool init_vulkan(GLFWwindow *window){
     if (!create_framebuffers()) return false;
     if (!create_command_pool()) return false;
     if (!create_command_buffer()) return false;
+    if (!create_sync_objects()) return false;
 
     return true;
 }
 
 void destroy_vulkan() {
+    destroy_sync_objects();
     destroy_command_pool();
     destroy_framebuffers();
     destroy_pipeline();
@@ -358,37 +365,36 @@ static void find_queue_families(){
 }
 
 static bool create_logical_device(){
-
     VkPhysicalDeviceFeatures device_features = {};
     VkDeviceCreateInfo create_info = {};
+    VkDeviceQueueCreateInfo *queue_create_infos;
     float queue_priority =  1.0f;
     uint32_t create_info_count = 0;
 
     if (queue_indices.graphics_family != queue_indices.present_family) {
         uint32_t queue_families[] = {queue_indices.graphics_family, queue_indices.present_family};
-        VkDeviceQueueCreateInfo queue_create_info [2] = {};
-    
-        queue_create_info[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queue_create_info[0].queueFamilyIndex = queue_families[0];
-        queue_create_info[0].queueCount = 1;
-        queue_create_info[0].pQueuePriorities = &queue_priority;
+        queue_create_infos = malloc (2 * sizeof(VkDeviceQueueCreateInfo));
+        queue_create_infos[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queue_create_infos[0].queueFamilyIndex = queue_families[0];
+        queue_create_infos[0].queueCount = 1;
+        queue_create_infos[0].pQueuePriorities = &queue_priority;
 
     
-        queue_create_info[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queue_create_info[1].queueFamilyIndex = queue_families[1];
-        queue_create_info[1].queueCount = 1;
-        queue_create_info[1].pQueuePriorities = &queue_priority;
+        queue_create_infos[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queue_create_infos[1].queueFamilyIndex = queue_families[1];
+        queue_create_infos[1].queueCount = 1;
+        queue_create_infos[1].pQueuePriorities = &queue_priority;
 
-        create_info.pQueueCreateInfos = queue_create_info;
+        create_info.pQueueCreateInfos = queue_create_infos;
         create_info.queueCreateInfoCount = 2;
     } else  {
-        VkDeviceQueueCreateInfo queue_create_info = {};
+         queue_create_infos = malloc (sizeof(VkDeviceQueueCreateInfo));
     
-        queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queue_create_info.queueFamilyIndex = queue_indices.graphics_family;
-        queue_create_info.queueCount = 1;
-        queue_create_info.pQueuePriorities = &queue_priority;
-        create_info.pQueueCreateInfos = &queue_create_info; 
+        queue_create_infos[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queue_create_infos[0].queueFamilyIndex = queue_indices.graphics_family;
+        queue_create_infos[0].queueCount = 1;
+        queue_create_infos[0].pQueuePriorities = &queue_priority;
+        create_info.pQueueCreateInfos = queue_create_infos; 
         create_info.queueCreateInfoCount = 1; 
     }
   
@@ -730,7 +736,7 @@ static bool create_command_pool(){
     pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     pool_info.queueFamilyIndex = queue_indices.graphics_family;
-    if (vkCreateCommandPool(logical_device, &pool_info, NULL, &swap_chain.command_buffer) != VK_SUCCESS) {
+    if (vkCreateCommandPool(logical_device, &pool_info, NULL, &swap_chain.command_pool) != VK_SUCCESS) {
         FATAL("Failed to create command pool");
         return false;
     }
@@ -738,7 +744,7 @@ static bool create_command_pool(){
 }
 
 static void destroy_command_pool(){
-    vkDestroyCommandPool(logical_device,  swap_chain.command_pool, NULL);
+    vkDestroyCommandPool(logical_device, swap_chain.command_pool, NULL);
 }
 
 static bool create_command_buffer(){
@@ -808,4 +814,74 @@ static bool record_command_buffer(VkCommandBuffer command_buffer, uint32_t image
     }
 
     return true;
+}
+
+static bool create_sync_objects(){
+    VkSemaphoreCreateInfo semaphoreInfo = {};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    VkFenceCreateInfo fenceInfo = {};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    if (vkCreateSemaphore(logical_device, &semaphoreInfo, NULL, &imageAvailableSemaphore) != VK_SUCCESS ||
+        vkCreateSemaphore(logical_device, &semaphoreInfo, NULL, &renderFinishedSemaphore) != VK_SUCCESS ||
+        vkCreateFence(logical_device, &fenceInfo, NULL, &inFlightFence) != VK_SUCCESS) {
+        FATAL("Failed to create semaphores!");
+        return false;
+    }
+    return true;
+}
+
+static void destroy_sync_objects(){
+    vkDestroySemaphore(logical_device, imageAvailableSemaphore, NULL);
+    vkDestroySemaphore(logical_device, renderFinishedSemaphore, NULL);
+    vkDestroyFence(logical_device, inFlightFence, NULL);
+}
+
+void draw_frame() {
+    vkWaitForFences(logical_device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
+
+    vkResetFences(logical_device, 1, &inFlightFence);
+
+    uint32_t imageIndex;
+    vkAcquireNextImageKHR(logical_device, swap_chain.handle, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+
+    vkResetCommandBuffer(swap_chain.command_buffer, 0);
+
+    record_command_buffer(swap_chain.command_buffer, imageIndex);
+
+    VkSubmitInfo submitInfo = {};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    VkSemaphore waitSemaphores[] = {imageAvailableSemaphore};
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = waitSemaphores;
+    submitInfo.pWaitDstStageMask = waitStages;
+
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &swap_chain.command_buffer;
+
+    VkSemaphore signalSemaphores[] = {renderFinishedSemaphore};
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = signalSemaphores;
+
+    if (vkQueueSubmit(graphics_queue, 1, &submitInfo, inFlightFence) != VK_SUCCESS) {
+        FATAL("Failed to submit draw command buffer!");
+    }
+
+    VkPresentInfoKHR presentInfo = {};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = signalSemaphores;
+
+    VkSwapchainKHR swapChains[] = {swap_chain.handle};
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = swapChains;
+
+    presentInfo.pImageIndices = &imageIndex;
+
+    vkQueuePresentKHR(present_queue, &presentInfo);
 }

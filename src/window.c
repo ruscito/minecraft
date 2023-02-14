@@ -87,6 +87,7 @@ void window_loop() {
     while (!glfwWindowShouldClose(window.handle))
     {
         glfwPollEvents();
+        draw_frame();
         glfwSetWindowShouldClose(window.handle, window.keyboard.key[GLFW_KEY_Q].pressed);
 
         if (window.keyboard.key[GLFW_KEY_ESCAPE].pressed && glfwGetInputMode(window.handle, GLFW_CURSOR) == GLFW_CURSOR_DISABLED) {
@@ -97,6 +98,8 @@ void window_loop() {
              glfwSetInputMode(window.handle, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
         } 
     }
+    
+    vkDeviceWaitIdle(logical_device);
 }
 
 void window_destroy() {

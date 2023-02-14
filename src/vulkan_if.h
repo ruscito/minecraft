@@ -5,6 +5,7 @@
 #include "GLFW/glfw3.h"
 #include <vulkan/vulkan.h>
 
+
 typedef struct swap_chain {
     VkSwapchainKHR handle;      // handle to the swap chain not sure we realy need this
     uint32_t images_count;      // number of images in the swap chain
@@ -13,14 +14,16 @@ typedef struct swap_chain {
     VkFormat image_format;  
     VkExtent2D extent;      
     VkFramebuffer *framebuffers;
-    VkCommandPool *command_pool;
+    VkCommandPool command_pool;
     VkCommandBuffer command_buffer;
 } swap_chain_t;
 
 
-bool init_vulkan(GLFWwindow *window);
-
-void destroy_vulkan();
-
 extern VkDevice logical_device;
 extern swap_chain_t swap_chain;
+
+
+
+bool init_vulkan(GLFWwindow *window);
+void destroy_vulkan();
+void draw_frame();
