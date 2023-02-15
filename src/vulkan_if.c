@@ -27,6 +27,10 @@ static GLFWwindow *wnd;
 static VkSurfaceKHR surface;
 static struct queue_family_indices queue_indices; 
 
+VkFramebuffer *swap_chain_framebuffers;
+VkCommandPool command_pool;
+VkCommandBuffer command_buffer;
+
 VkSemaphore imageAvailableSemaphore;
 VkSemaphore renderFinishedSemaphore;
 VkFence inFlightFence;
@@ -697,8 +701,8 @@ static void destroy_image_views() {
 }
 
 static bool create_framebuffers() {
-    swap_chain.framebuffers = malloc(swap_chain.images_count * sizeof(swap_chain.framebuffers ));
-    if (swap_chain.framebuffers  == NULL) {
+    swap_chain_framebuffers = malloc(swap_chain.images_count * sizeof(VkFramebuffer));
+    if (swap_chain_framebuffers  == NULL) {
         FATAL("Failed to allocate memoty for the framebuffers");
         return false;
     }
@@ -717,7 +721,7 @@ static bool create_framebuffers() {
         framebuffer_info.height = swap_chain.extent.height;
         framebuffer_info.layers = 1;
 
-        if (vkCreateFramebuffer(logical_device, &framebuffer_info, NULL, &swap_chain.framebuffers[i]) != VK_SUCCESS) {
+        if (vkCreateFramebuffer(logical_device, &framebuffer_info, NULL, &swap_chain_framebuffers[i]) != VK_SUCCESS) {
             FATAL("Failed to create framebuffers");
             return false;
         }    
@@ -727,7 +731,7 @@ static bool create_framebuffers() {
 
 static void destroy_framebuffers() {
     for (int i=0; i<swap_chain.images_count; i++) {
-        vkDestroyFramebuffer(logical_device,  swap_chain.framebuffers[i], NULL);
+        vkDestroyFramebuffer(logical_device, swap_chain_framebuffers[i], NULL);
     }
 }
 
@@ -736,7 +740,7 @@ static bool create_command_pool(){
     pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     pool_info.queueFamilyIndex = queue_indices.graphics_family;
-    if (vkCreateCommandPool(logical_device, &pool_info, NULL, &swap_chain.command_pool) != VK_SUCCESS) {
+    if (vkCreateCommandPool(logical_device, &pool_info, NULL, &command_pool) != VK_SUCCESS) {
         FATAL("Failed to create command pool");
         return false;
     }
@@ -744,30 +748,28 @@ static bool create_command_pool(){
 }
 
 static void destroy_command_pool(){
-    vkDestroyCommandPool(logical_device, swap_chain.command_pool, NULL);
+    vkDestroyCommandPool(logical_device, command_pool, NULL);
 }
 
 static bool create_command_buffer(){
     VkCommandBufferAllocateInfo alloc_info = {};
     alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    alloc_info.commandPool = swap_chain.command_pool;
+    alloc_info.commandPool = command_pool;
     alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     alloc_info.commandBufferCount = 1;
 
-    if (vkAllocateCommandBuffers(logical_device, &alloc_info, &swap_chain.command_buffer) != VK_SUCCESS) {
+    if (vkAllocateCommandBuffers(logical_device, &alloc_info, &command_buffer) != VK_SUCCESS) {
         FATAL("Failed to create command buffer");
         return false;
     }
     return true;
 }
 
-static bool record_command_buffer(VkCommandBuffer command_buffer, uint32_t image_index){
+static bool record_command_buffer(VkCommandBuffer cmd_buffer, uint32_t image_index){
     VkCommandBufferBeginInfo beginInfo = {};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = 0; // Optional
-    beginInfo.pInheritanceInfo = NULL; // Optional
 
-    if (vkBeginCommandBuffer(command_buffer, &beginInfo) != VK_SUCCESS) {
+    if (vkBeginCommandBuffer(cmd_buffer, &beginInfo) != VK_SUCCESS) {
         FATAL("Failed to begin recording command buffer!");
         return false;
     }
@@ -775,7 +777,7 @@ static bool record_command_buffer(VkCommandBuffer command_buffer, uint32_t image
     VkRenderPassBeginInfo renderPassInfo = {};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassInfo.renderPass = render_pass;
-    renderPassInfo.framebuffer = swap_chain.framebuffers[image_index];
+    renderPassInfo.framebuffer = swap_chain_framebuffers[image_index];
 
     renderPassInfo.renderArea.offset.x = 0;
     renderPassInfo.renderArea.offset.y = 0;
@@ -785,30 +787,30 @@ static bool record_command_buffer(VkCommandBuffer command_buffer, uint32_t image
     renderPassInfo.clearValueCount = 1;
     renderPassInfo.pClearValues = &clearColor;
 
-    vkCmdBeginRenderPass(command_buffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBeginRenderPass(cmd_buffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        vkCmdBindPipeline(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
-    VkViewport viewport = {};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = (float) swap_chain.extent.width;
-    viewport.height = (float) swap_chain.extent.height;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+        VkViewport viewport = {};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = (float) swap_chain.extent.width;
+        viewport.height = (float) swap_chain.extent.height;
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(cmd_buffer, 0, 1, &viewport);
 
-    VkRect2D scissor = {};
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent =  swap_chain.extent;
-    vkCmdSetScissor(command_buffer, 0, 1, &scissor);    
+        VkRect2D scissor = {};
+        scissor.offset.x = 0;
+        scissor.offset.y = 0;
+        scissor.extent =  swap_chain.extent;
+        vkCmdSetScissor(cmd_buffer, 0, 1, &scissor);    
 
-    vkCmdDraw(command_buffer, 3, 1, 0, 0);
+        vkCmdDraw(cmd_buffer, 3, 1, 0, 0);
 
-    vkCmdEndRenderPass(command_buffer);
+    vkCmdEndRenderPass(cmd_buffer);
 
-    if (vkEndCommandBuffer(command_buffer ) != VK_SUCCESS) {
+    if (vkEndCommandBuffer(cmd_buffer ) != VK_SUCCESS) {
         FATAL("Failed to record command buffer!");
         return false;
     }
@@ -841,29 +843,28 @@ static void destroy_sync_objects(){
 
 void draw_frame() {
     vkWaitForFences(logical_device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
-
     vkResetFences(logical_device, 1, &inFlightFence);
 
     uint32_t imageIndex;
     vkAcquireNextImageKHR(logical_device, swap_chain.handle, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
 
-    vkResetCommandBuffer(swap_chain.command_buffer, 0);
-
-    record_command_buffer(swap_chain.command_buffer, imageIndex);
+    vkResetCommandBuffer(command_buffer, 0);
+  
+    record_command_buffer(command_buffer, imageIndex);
 
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-    VkSemaphore waitSemaphores[] = {imageAvailableSemaphore};
-    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    VkSemaphore waitSemaphores[1] = {imageAvailableSemaphore};
+    VkPipelineStageFlags waitStages[1] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     submitInfo.waitSemaphoreCount = 1;
     submitInfo.pWaitSemaphores = waitSemaphores;
     submitInfo.pWaitDstStageMask = waitStages;
 
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &swap_chain.command_buffer;
+    submitInfo.pCommandBuffers = &command_buffer;
 
-    VkSemaphore signalSemaphores[] = {renderFinishedSemaphore};
+    VkSemaphore signalSemaphores[1] = {renderFinishedSemaphore};
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
@@ -877,7 +878,7 @@ void draw_frame() {
     presentInfo.waitSemaphoreCount = 1;
     presentInfo.pWaitSemaphores = signalSemaphores;
 
-    VkSwapchainKHR swapChains[] = {swap_chain.handle};
+    VkSwapchainKHR swapChains[1] = {swap_chain.handle};
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = swapChains;
 
